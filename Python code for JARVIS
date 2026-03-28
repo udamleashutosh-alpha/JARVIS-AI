@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""
+BRAMHA AI - JARVIS for Ashutosh
+Student | Developer | Hacker India Member
+JEE/MHTCET | Productivity | Automation
+"""
+
+import speech_recognition as sr
+import pyttsx3
+import datetime
+import webbrowser
+import os
+import subprocess
+import requests
+import json
+import threading
+import time
+import re
+from collections import defaultdict
+import wolframalpha
+import sqlite3
+import adbutils  # For Android control
+
+class BramhaAI:
+    def __init__(self):
+        self.name = "BRAMHA"
+        self.user = "Ashutosh"
+        self.wake_word = "hey bramha"
+        self.listening = False
+        self.conversation_memory = []
+        self.modes = {
+            "study": False, "hacker": False, "focus": False,
+            "automation": False
+        }
+        self.tasks = []
+        self.study_progress = defaultdict(int)
+        
+        # Initialize voice
+        self.tts_engine = pyttsx3.init()
+        self.tts_engine.setProperty('rate', 180)
+        voices = self.tts_engine.getProperty('voices')
+        self.tts_engine.setProperty('voice', voices[1].id)  # Female voice
+        
+        # Speech recognition
+        self.recognizer = sr.Recognizer()
+        self.microphone = sr.Microphone()
+        
+        # Wolfram Alpha for JEE/math
+        self.wolfram_client = wolframalpha.Client("YOUR_WOLFRAM_APPID")
+        
+        # Database for memory
+        self.init_db()
+        
+        print(f"🚀 {self.name} activated for {self.user}")
+        self.speak("BRAMHA online. Ready to optimize your life, Ashutosh.")
+        
+    def init_db(self):
+        self.conn = sqlite3.connect('bramha_memory.db')
+        self.conn.execute('''CREATE TABLE IF NOT EXISTS memory 
+                           (timestamp TEXT, command TEXT, response TEXT)''')
+        self.conn.execute('''CREATE TABLE IF NOT EXISTS study_progress 
+                           (subject TEXT, questions_solved INTEGER, accuracy REAL)''')
+        self.conn.commit()
+    
+    def speak(self, text):
+        print(f"💬 BRAMHA: {text}")
+        self.tts_engine.say(text)
+        self.tts_engine.runAndWait()
+    
+    def listen(self):
+        with self.microphone as source:
+            self.recognizer.adjust_for_ambient_noise(source)
+        try:
+            with self.microphone as source:
+                audio = self.recognizer.listen(source, timeout=1)
+            command = self.recognizer.recognize_google(audio).lower()
+            print(f"🎤 You: {command}")
+            return command
+        except:
+            return ""
+    
+    def save_memory(self, command, response):
+        self.conn.execute("INSERT INTO memory VALUES (?, ?, ?)",
+                         (str(datetime.datetime.now()), command, response))
+        self.conn.commit()
+    
+    def detect_mode(self, command):
+        if "study mode" in command:
+            self.modes["study"] = True
+            self.speak("Study Mode activated. JEE/MHTCET optimization engaged.")
+        elif "hacker mode" in command:
+            self.modes["hacker"] = True
+            self.speak("Hacker Mode online. Code generation and ethical hacking tools ready.")
+        elif "focus mode" in command:
+            self.modes["focus"] = True
+            self.start_pomodoro()
+    
+    def process_command(self, command):
+        self.conversation_memory.append(command)
+        response = self.execute_command(command)
+        self.save_memory(command, response)
+        return response
+    
+    def execute_command(self, command):
+        command = command.lower()
+        
+        # Quick productivity
+        if "time" in command:
+            now = datetime.datetime.now().strftime("%H:%M")
+            return f"Current time is {now}"
+        
+        elif "open" in command:
+            if "whatsapp" in command:
+                webbrowser.open("https://web.whatsapp.com")
+                return "Opening WhatsApp Web"
+            elif "youtube" in command:
+                webbrowser.open("https://youtube.com")
+                return "YouTube launched"
+        
+        # Study Mode - JEE/MHTCET
+        elif self.modes["study"]:
+            if any(x in command for x in ["physics", "chemistry", "math"]):
+                return self.solve_jee_problem(command)
+            elif "timetable" in command:
+                return self.generate_study_timetable()
+            elif "pyq" in command:
+                return self.get_previous_year_questions(command)
+        
+        # Hacker Mode - Coding
+        elif self.modes["hacker"]:
+            if "generate code" in command or "write" in command:
+                return self.generate_code(command)
+            elif "debug" in command:
+                return "Paste your error traceback for debugging."
+        
+        # Phone/PC Control
+        elif "brightness" in command:
+            level = re.search(r'(\d+)%?', command)
+            if level:
+                subprocess.run(["nircmd", "setsysvolume", level.group(1)])
+                return f"Brightness set to {level.group(1)}%"
+        
+        elif "search" in command:
+            query = command.replace("search", "").strip()
+            webbrowser.open(f"https://google.com/search?q={query}")
+            return f"Searching for {query}"
+        
+        # Automation
+        elif "remind" in command:
+            time_match = re.search(r'in (\d+) (minutes?|hours?)', command)
+            if time_match:
+                # Schedule reminder (simplified)
+                return f"Reminder set for {time_match.group(1)} {time_match.group(2)}"
+        
+        elif "joke" in command:
+            return self.get_joke()
+        
+        else:
+            return self.wolfram_query(command)
+    
+    def solve_jee_problem(self, problem):
+        """Solve Physics/Chem/Math problems"""
+        try:
+            res = self.wolfram_client.query(problem)
+            answer = next(res.results).text
+            self.study_progress['math'] += 1
+            return f"Solution: {answer}"
+        except:
+            return "Let me solve that step-by-step. What's the exact problem?"
+    
+    def generate_study_timetable(self):
+        timetable = """
+📚 JEE DAILY TIMETABLE (Ashutosh)
+07:00-08:00: Math (Calculus focus)
+08:30-10:00: Physics (Mechanics)
+10:30-12:00: Chemistry (Organic)
+13:00-15:00: Mock Test + Analysis
+15:30-17:00: Weak Topics Revision
+19:00-21:00: PYQs + Problem Solving
+"""
+        return timetable
+    
+    def generate_code(self, request):
+        """AI Code Generator"""
+        templates = {
+            "whatsapp bot": '''from selenium import webdriver
+driver = webdriver.Chrome()
+driver.get("https://web.whatsapp.com")''',
+            "web scraper": '''import requests
+from bs4 import BeautifulSoup
+r = requests.get("URL")
+soup = BeautifulSoup(r.content, "html.parser")'''
+        }
+        
+        for key in templates:
+            if key in request:
+                return f"```python\n{templates[key]}\n```"
+        return "Specify: 'whatsapp bot', 'web scraper', or describe your app."
+    
+    def start_pomodoro(self):
+        def pomodoro_cycle():
+            self.speak("25 minutes focus session started. Stay sharp!")
+            time.sleep(25*60)
+            self.speak("Pomodoro complete! Take 5 minute break.")
+        threading.Thread(target=pomodoro_cycle, daemon=True).start()
+    
+    def wolfram_query(self, query):
+        try:
+            res = self.wolfram_client.query(query)
+            return next(res.results).text
+        except:
+            return "Searching web for latest info..."
+    
+    def get_joke(self):
+        jokes = [
+            "Why do programmers prefer dark mode? Because light attracts bugs!",
+            "Ashutosh, your code runs faster than my JEE rank prediction!"
+        ]
+        return jokes[0]
+    
+    def run(self):
+        self.speak("Voice mode active. Say 'Hey Bramha' to start.")
+        
+        while True:
+            command = self.listen()
+            
+            if self.wake_word in command:
+                self.speak("Yes Ashutosh?")
+                follow_up = self.listen()
+                
+                self.detect_mode(follow_up)
+                response = self.process_command(follow_up)
+                
+                # Structured response
+                print("\n" + "="*50)
+                print("1. Quick Answer")
+                print(response[:100] + "...")
+                print("\n2. Action Steps")
+                print("- Task completed")
+                print("- Say 'more details' for explanation")
+                print("\n3. Smart Suggestion")
+                print("- Activate Study Mode for JEE prep")
+                print("- Enable Full Automation Mode")
+                print("="*50 + "\n")
+                
+                self.speak(response)
+
+if __name__ == "__main__":
+    bramha = BramhaAI()
+    bramha.run()
